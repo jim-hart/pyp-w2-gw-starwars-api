@@ -1,8 +1,8 @@
 from starwars_api.client import SWAPIClient
 from starwars_api.exceptions import SWAPIClientError
+import six
 
 api_client = SWAPIClient()
-
 
 class BaseModel(object):
 
@@ -11,7 +11,8 @@ class BaseModel(object):
         Dynamically assign all attributes in `json_data` as instance
         attributes of the Model.
         """
-        pass
+        for k, v in six.iteritems(json_data):
+            setattr(self, k, v)
 
     @classmethod
     def get(cls, resource_id):
@@ -19,7 +20,8 @@ class BaseModel(object):
         Returns an object of current Model requesting data to SWAPI using
         the api_client.
         """
-        pass
+        return cls(getattr(api_client, 'get_'+cls.RESOURCE_NAME)(resource_id))
+
 
     @classmethod
     def all(cls):
@@ -28,7 +30,8 @@ class BaseModel(object):
         later in charge of performing requests to SWAPI for each of the
         pages while looping.
         """
-        pass
+        query = cls.RESOURCE_NAME.title() + 'QuerySet'
+        return globals()[query]()
 
 
 class People(BaseModel):
@@ -55,19 +58,38 @@ class Films(BaseModel):
 class BaseQuerySet(object):
 
     def __init__(self):
-        pass
+        self.objects = []
+        self.page = 0
+        self.obj_count = 0
 
     def __iter__(self):
-        pass
+        return self.__class__()
 
     def __next__(self):
         """
         Must handle requests to next pages in SWAPI when objects in the current
         page were all consumed.
         """
-        pass
+        while True:
+            if self.obj_count >= len(self.objects):
+                try:
+                    self._get_next_page()
+                except SWAPIClientError:
+                    raise StopIteration
 
+            self.obj_count += 1
+            return self.objects[self.obj_count-1]
+    
     next = __next__
+
+    def _get_next_page(self):
+
+        self.page += 1
+        data = getattr(api_client, 'get_'+self.RESOURCE_NAME)(page=self.page)
+
+        while data['results']:
+            new_obj = globals()[self.RESOURCE_NAME.title()](data['results'].pop(0))
+            self.objects.append(new_obj)
 
     def count(self):
         """
@@ -75,7 +97,8 @@ class BaseQuerySet(object):
         If the counter is not persisted as a QuerySet instance attr,
         a new request is performed to the API in order to get it.
         """
-        pass
+        return getattr(api_client, 'get_'+self.RESOURCE_NAME)()['count']
+
 
 
 class PeopleQuerySet(BaseQuerySet):
